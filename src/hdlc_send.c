@@ -189,6 +189,7 @@ int hdlc_send_flags (int chan, int nflags, int finish)
 
 	if (finish) {
 	  audio_flush(ACHAN2ADEV(chan));
+	  gen_tone_reset(chan);
 	}
 
 	return (number_of_bits_sent[chan]);

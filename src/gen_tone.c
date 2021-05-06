@@ -254,6 +254,7 @@ int gen_tone_init (struct audio_s *audio_config_p, int amp, int gen_packets)
 	  sine_table[j] = s;
         }
 
+		gen_tone_reset(chan);
 	return (0);
 
  } /* end gen_tone_init */
@@ -433,6 +434,14 @@ void tone_gen_put_bit (int chan, int dat)
 
 }  /* end tone_gen_put_bit */
 
+void gen_tone_reset(int chan){
+	if (chan < MAX_CHANS && save_audio_config_p->achan[chan].modem_type == MODEM_SCRAMBLE) {
+	  lfsr[chan] = 0;
+	  prev_dat[chan] = 0;
+	  dw_printf("Reset lfsr buffer.\n");
+	  tone_phase[chan] = 0;
+	}
+}
 
 void gen_tone_put_sample (int chan, int a, int sam) {
 
