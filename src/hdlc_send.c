@@ -31,7 +31,7 @@
 
 static void send_control (int, int);
 static void send_data (int, int);
-static void send_bit (int, int);
+static void send_bit (int, int, int);
 
 
 
@@ -190,6 +190,7 @@ int hdlc_send_flags (int chan, int nflags, int finish)
 	if (finish) {
 	  audio_flush(ACHAN2ADEV(chan));
 	  gen_tone_reset(chan);
+	  hdlc_send_reset_nrzi(chan);
 	}
 
 	return (number_of_bits_sent[chan]);
@@ -207,7 +208,8 @@ static void send_control (int chan, int x)
 	int i;
 
 	for (i=0; i<8; i++) {
-	  send_bit (chan, x & 1);
+	  //Comment this line to skip sending flags
+	  send_bit (chan, x & 1, 0);
 	  x >>= 1;
 	}
 	
@@ -219,11 +221,11 @@ static void send_data (int chan, int x)
 	int i;
 
 	for (i=0; i<8; i++) {
-	  send_bit (chan, x & 1);
+	  send_bit (chan, x & 1, 0);
 	  if (x & 1) {
 	    stuff[chan]++;
 	    if (stuff[chan] == 5) {
-	      send_bit (chan, 0);
+	      send_bit (chan, 0, 0);
 	      stuff[chan] = 0;
 	    }
 	  } else {
@@ -237,11 +239,20 @@ static void send_data (int chan, int x)
  * NRZI encoding.
  * data 1 bit -> no change.
  * data 0 bit -> invert signal.
+ * 
+ * is_a_reset == 0 -> Works as usual
+ * is_a_reset == 1 -> resets the last output to 0 and does not send any bit.
  */
 
-static void send_bit (int chan, int b)
+static void send_bit (int chan, int b, int is_a_reset)
 {
 	static int output[MAX_CHANS];
+
+	if(is_a_reset != 0){
+		output[chan] = 0;
+		dw_printf("Reset NRZI state.\n");
+		return;
+	}
 
 	if (b == 0) {
 	  output[chan] = ! output[chan];
@@ -250,6 +261,10 @@ static void send_bit (int chan, int b)
 	tone_gen_put_bit (chan, output[chan]);
 
 	number_of_bits_sent[chan]++;
+}
+
+void hdlc_send_reset_nrzi(int chan){
+	send_bit(chan, 0, 1);
 }
 
 /* end hdlc_send.c */

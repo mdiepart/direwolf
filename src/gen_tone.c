@@ -42,6 +42,7 @@
 #include "audio.h"
 #include "gen_tone.h"
 #include "textcolor.h"
+#include "hdlc_send.h"
 
 #include "fsk_demod_state.h"	/* for MAX_FILTER_SIZE which might be overly generous for here. */
 				/* but safe if we use same size as for receive. */
@@ -253,8 +254,11 @@ int gen_tone_init (struct audio_s *audio_config_p, int amp, int gen_packets)
 	  }
 	  sine_table[j] = s;
         }
-
+	
+		//Resets scrambler parameters and NRZI to be sure to start in a known state.
 		gen_tone_reset(chan);
+		hdlc_send_reset_nrzi(chan);
+
 	return (0);
 
  } /* end gen_tone_init */
