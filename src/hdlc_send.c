@@ -29,10 +29,11 @@
 #include "fcs_calc.h"
 #include "fx25.h"
 
+static void send_sync (int, int);
 static void send_control (int, int);
 static void send_data (int, int);
-static void send_bit (int, int, int);
-
+static void send_bit (int, int);
+static void send_bit_no_scramble (int, int);
 
 
 static int number_of_bits_sent[MAX_CHANS];		// Count number of bits sent by "hdlc_send_frame" or "hdlc_send_flags"
@@ -164,6 +165,29 @@ static int ax25_only_hdlc_send_frame (int chan, unsigned char *fbuf, int flen, i
  *
  *--------------------------------------------------------------*/
 
+int hdlc_send_sync_word (int chan, int nsync, int syncword){
+	int j;
+	
+
+	number_of_bits_sent[chan] = 0;
+
+
+#if DEBUG
+	text_color_set(DW_COLOR_DEBUG);
+	dw_printf ("hdlc_send_flags ( chan = %d, nflags = %d, finish = %d )\n", chan, nflags, finish);
+	fflush (stdout);
+#endif
+
+	/* The AX.25 spec states that when the transmitter is on but not sending data */
+	/* it should send a continuous stream of "flags." */
+
+	for (j=0; j<nsync; j++) {
+	  send_sync (chan, syncword&0xFF);
+	}
+
+	return (number_of_bits_sent[chan]);
+}
+
 int hdlc_send_flags (int chan, int nflags, int finish)
 {
 	int j;
@@ -209,7 +233,19 @@ static void send_control (int chan, int x)
 
 	for (i=0; i<8; i++) {
 	  //Comment this line to skip sending flags
-	  send_bit (chan, x & 1, 0);
+	  send_bit (chan, x & 1);
+	  x >>= 1;
+	}
+	
+	stuff[chan] = 0;
+}
+
+static void send_sync (int chan, int x) 
+{
+	int i;
+
+	for (i=0; i<8; i++) {
+	  send_bit_no_scramble (chan, x & 1);
 	  x >>= 1;
 	}
 	
@@ -221,11 +257,11 @@ static void send_data (int chan, int x)
 	int i;
 
 	for (i=0; i<8; i++) {
-	  send_bit (chan, x & 1, 0);
+	  send_bit (chan, x & 1);
 	  if (x & 1) {
 	    stuff[chan]++;
 	    if (stuff[chan] == 5) {
-	      send_bit (chan, 0, 0);
+	      send_bit (chan, 0);
 	      stuff[chan] = 0;
 	    }
 	  } else {
@@ -240,31 +276,34 @@ static void send_data (int chan, int x)
  * data 1 bit -> no change.
  * data 0 bit -> invert signal.
  * 
- * is_a_reset == 0 -> Works as usual
- * is_a_reset == 1 -> resets the last output to 0 and does not send any bit.
  */
+static int send_bit_output[MAX_CHANS];
 
-static void send_bit (int chan, int b, int is_a_reset)
+static void send_bit (int chan, int b)
 {
-	static int output[MAX_CHANS];
-
-	if(is_a_reset != 0){
-		output[chan] = 0;
-		dw_printf("Reset NRZI state.\n");
-		return;
-	}
 
 	if (b == 0) {
-	  output[chan] = ! output[chan];
+	  send_bit_output[chan] = ! send_bit_output[chan];
 	}
 
-	tone_gen_put_bit (chan, output[chan]);
+	tone_gen_put_bit (chan, send_bit_output[chan]);
+
+	number_of_bits_sent[chan]++;
+}
+
+static void send_bit_no_scramble (int chan, int b)
+{
+	if (b == 0) {
+	  send_bit_output[chan] = ! send_bit_output[chan];
+	}
+
+	tone_gen_put_bit_no_scramble (chan, send_bit_output[chan]);
 
 	number_of_bits_sent[chan]++;
 }
 
 void hdlc_send_reset_nrzi(int chan){
-	send_bit(chan, 0, 1);
+	send_bit_output[chan] = 0;
 }
 
 /* end hdlc_send.c */

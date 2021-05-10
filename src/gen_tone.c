@@ -294,6 +294,143 @@ static const int gray2phase_v26[4] = {0, 1, 3, 2};
 static const int gray2phase_v27[8] = {1, 0, 2, 3, 6, 7, 5, 4};
 
 
+void tone_gen_put_bit_no_scramble (int chan, int dat)
+{
+	int a = ACHAN2ADEV(chan);	/* device for channel. */
+
+	assert (save_audio_config_p != NULL);
+
+	if (save_audio_config_p->achan[chan].medium != MEDIUM_RADIO) {
+	  text_color_set(DW_COLOR_ERROR);
+	  dw_printf ("Invalid channel %d for tone generation.\n", chan);
+	  return;
+	}
+
+        if (dat < 0) { 
+	  /* Hack to test receive PLL recovery. */
+	  bit_len_acc[chan] -= ticks_per_bit[chan]; 
+	  dat = 0; 
+	} 
+
+// TODO: change to switch instead of if if if
+
+	if (save_audio_config_p->achan[chan].modem_type == MODEM_QPSK) {
+
+	  int dibit;
+	  int symbol;
+
+	  dat &= 1;	// Keep only LSB to be extra safe.
+
+	  if ( ! (bit_count[chan] & 1)) {
+	    save_bit[chan] = dat;
+	    bit_count[chan]++;
+	    return;
+	  }
+
+	  // All zero bits should give us steady 1800 Hz.
+	  // All one bits should flip phase by 180 degrees each time.
+
+	  dibit = (save_bit[chan] << 1) | dat;
+
+	  symbol = gray2phase_v26[dibit];
+	  tone_phase[chan] += symbol * PHASE_SHIFT_90;
+	  if (save_audio_config_p->achan[chan].v26_alternative == V26_B) {
+	    tone_phase[chan] += PHASE_SHIFT_45;
+	  }
+	  bit_count[chan]++;
+	}
+
+	if (save_audio_config_p->achan[chan].modem_type == MODEM_8PSK) {
+
+	  int tribit;
+	  int symbol;
+
+	  dat &= 1;	// Keep only LSB to be extra safe.
+
+	  if (bit_count[chan] < 2) {
+	    save_bit[chan] = (save_bit[chan] << 1) | dat;
+	    bit_count[chan]++;
+	    return;
+	  }
+
+	  // The bit pattern 001 should give us steady 1800 Hz.
+	  // All one bits should flip phase by 180 degrees each time.
+
+	  tribit = (save_bit[chan] << 1) | dat;
+
+	  symbol = gray2phase_v27[tribit];
+	  tone_phase[chan] += symbol * PHASE_SHIFT_45;
+
+	  save_bit[chan] = 0;
+	  bit_count[chan] = 0;
+	}
+
+	  
+	do {		/* until enough audio samples for this symbol. */
+
+	  int sam;
+
+	  switch (save_audio_config_p->achan[chan].modem_type) {
+
+	    case MODEM_AFSK:
+
+#if DEBUG2
+	      text_color_set(DW_COLOR_DEBUG);
+	      dw_printf ("tone_gen_put_bit %d AFSK\n", __LINE__);
+#endif
+	      tone_phase[chan] += dat ? f2_change_per_sample[chan] : f1_change_per_sample[chan];
+              sam = sine_table[(tone_phase[chan] >> 24) & 0xff];
+	      gen_tone_put_sample (chan, a, sam);
+	      break;
+
+	    case MODEM_QPSK:
+	    case MODEM_8PSK:
+
+#if DEBUG2
+	      text_color_set(DW_COLOR_DEBUG);
+	      dw_printf ("tone_gen_put_bit %d PSK\n", __LINE__);
+#endif
+	      tone_phase[chan] += f1_change_per_sample[chan];
+              sam = sine_table[(tone_phase[chan] >> 24) & 0xff];
+	      gen_tone_put_sample (chan, a, sam);
+	      break;
+
+	    case MODEM_BASEBAND:
+	    case MODEM_SCRAMBLE:
+	    case MODEM_AIS:
+
+	      if (dat != prev_dat[chan]) {
+	        tone_phase[chan] += f1_change_per_sample[chan];
+	      }
+	      else {
+	        if (tone_phase[chan] & 0x80000000)
+	          tone_phase[chan] = 0xc0000000;	// 270 degrees.
+	        else
+	          tone_phase[chan] = 0x40000000;	// 90 degrees.
+	      }
+              sam = sine_table[(tone_phase[chan] >> 24) & 0xff];
+	      gen_tone_put_sample (chan, a, sam);
+	      break;
+
+	    default:
+	      text_color_set(DW_COLOR_ERROR);
+	      dw_printf ("INTERNAL ERROR: %s %d achan[%d].modem_type = %d\n",
+				__FILE__, __LINE__, chan, save_audio_config_p->achan[chan].modem_type);
+	      exit (EXIT_FAILURE);
+	  }
+
+	  /* Enough for the bit time? */
+
+	  bit_len_acc[chan] += ticks_per_sample[chan];
+
+        } while (bit_len_acc[chan] < ticks_per_bit[chan]);
+
+	bit_len_acc[chan] -= ticks_per_bit[chan];
+
+	prev_dat[chan] = dat;		// Only needed for G3RUH baseband/scrambled.
+
+}  /* end tone_gen_put_bit */
+
 void tone_gen_put_bit (int chan, int dat)
 {
 	int a = ACHAN2ADEV(chan);	/* device for channel. */
@@ -436,7 +573,7 @@ void tone_gen_put_bit (int chan, int dat)
 
 	prev_dat[chan] = dat;		// Only needed for G3RUH baseband/scrambled.
 
-}  /* end tone_gen_put_bit */
+}  /* end tone_gen_put_bit_no_scramble */
 
 void gen_tone_reset(int chan){
 	if (chan < MAX_CHANS && save_audio_config_p->achan[chan].modem_type == MODEM_SCRAMBLE) {
