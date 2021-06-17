@@ -178,9 +178,6 @@ int hdlc_send_sync_word (int chan, int nsync, int syncword){
 	fflush (stdout);
 #endif
 
-	/* The AX.25 spec states that when the transmitter is on but not sending data */
-	/* it should send a continuous stream of "flags." */
-
 	for (j=0; j<nsync; j++) {
 	  send_sync (chan, syncword&0xFF);
 	}

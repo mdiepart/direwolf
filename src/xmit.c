@@ -721,7 +721,7 @@ static void * xmit_thread (void *arg)
 static void xmit_ax25_frames (int chan, int prio, packet_t pp, int max_bundle)
 {
 
-	int sync, pre_flags, post_flags;
+	int sync_words, pre_flags, post_flags;
 	int num_bits;		/* Total number of bits in transmission */
 				/* including all flags and bit stuffing. */
 	int duration;		/* Transmission time in milliseconds. */
@@ -760,10 +760,11 @@ static void xmit_ax25_frames (int chan, int prio, packet_t pp, int max_bundle)
 	dlq_seize_confirm (chan);	// C4.2.  "This primitive indicates, to the Data-link State
 					// machine, that the transmission opportunity has arrived."
 
-	sync = MS_TO_BITS(xmit_txdelay[chan] * 10, chan) / 8;
-	pre_flags = 16;
-	num_bits =  hdlc_send_sync_word(chan, sync, 0x00);
-	num_bits +=  hdlc_send_flags (chan, pre_flags, 0);
+	pre_flags = MS_TO_BITS(xmit_txdelay[chan] * 10, chan) / 8;
+	sync_words = 5;
+	num_bits = hdlc_send_flags(chan, pre_flags, 0);
+	num_bits +=  hdlc_send_sync_word(chan, sync_words, 0x00);
+	num_bits +=  hdlc_send_flags (chan, 5, 0);
 #if DEBUG
 	text_color_set(DW_COLOR_DEBUG);
 	dw_printf ("xmit_thread: t=%.3f, txdelay=%d [*10], pre_flags=%d, num_bits=%d\n", dtime_now()-time_ptt, xmit_txdelay[chan], pre_flags, num_bits);
